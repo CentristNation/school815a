@@ -1,0 +1,188 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <title>ZIP Dashboard</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+
+  <!-- Leaflet + Draw -->
+  <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css"/>
+  <link rel="stylesheet" href="https://unpkg.com/leaflet-draw@1.0.4/dist/leaflet.draw.css"/>
+  <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+  <script src="https://unpkg.com/leaflet-draw@1.0.4/dist/leaflet.draw.js"></script>
+  
+  <!-- Turf.js for spatial ops -->
+  <script src="https://cdn.jsdelivr.net/npm/@turf/turf@6/turf.min.js"></script>
+
+  <!-- FileSaver for CSV -->
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/FileSaver.js/2.0.5/FileSaver.min.js"></script>
+
+  <!-- leaflet-image for PNG export -->
+  <script src="https://unpkg.com/leaflet-image/leaflet-image.js"></script>
+
+  <style>
+    body, html { margin:0; padding:0; height:100%; font-family:Arial, sans-serif; }
+    #app { display:grid; grid-template-columns: 300px 1fr 300px; height:100%; }
+    #summary { overflow-y:auto; padding:10px; border-right:1px solid #ccc; }
+    #map { width:100%; height:100%; }
+    #filters { overflow-y:auto; padding:10px; border-left:1px solid #ccc; background:#f9f9f9; }
+
+    h2 { margin-top:0; font-size:1.1em; border-bottom:1px solid #ddd; padding-bottom:4px; }
+    .summary-item { margin:6px 0; }
+    .button { margin:6px 0; padding:6px 10px; background:#007bff; color:white; border:none; border-radius:4px; cursor:pointer; }
+    .button:hover { background:#0056b3; }
+  </style>
+</head>
+<body>
+<div id="app">
+  <!-- Left summary panel -->
+  <div id="summary">
+    <h2>Summary</h2>
+    <div id="summary-list">Draw a shape to see summary</div>
+    <button class="button" id="download-csv">Download CSV</button>
+    <button class="button" id="download-png">Download Map PNG</button>
+  </div>
+
+  <!-- Map -->
+  <div id="map"></div>
+
+  <!-- Right filter panel -->
+  <div id="filters">
+    <h2>Filters</h2>
+    <p>(Optional future filters go here)</p>
+  </div>
+</div>
+
+<script>
+let map = L.map('map').setView([37.8, -96], 4);
+
+// Basemap
+L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+  maxZoom:19,
+  attribution:'© OpenStreetMap'
+}).addTo(map);
+
+let geoLayer;
+let drawnItems = new L.FeatureGroup();
+map.addLayer(drawnItems);
+
+// Draw controls
+let drawControl = new L.Control.Draw({
+  draw: { polygon:true, rectangle:true, circle:false, marker:false, polyline:false },
+  edit: { featureGroup: drawnItems }
+});
+map.addControl(drawControl);
+
+let geoData; // store original data
+
+// Load GeoJSON (already EPSG:4326)
+fetch("data_wgs84.geojson")
+  .then(res => res.json())
+  .then(data => {
+    geoData = data;
+    // Color scale by population
+    function getColor(pop) {
+      return pop > 100000 ? '#800026' :
+             pop > 50000  ? '#BD0026' :
+             pop > 20000  ? '#E31A1C' :
+             pop > 10000  ? '#FC4E2A' :
+             pop > 5000   ? '#FD8D3C' :
+             pop > 1000   ? '#FEB24C' :
+                            '#FFEDA0';
+    }
+    function style(feature) {
+      return {
+        fillColor: getColor(feature.properties.population || 0),
+        weight: 1,
+        opacity: 1,
+        color: 'white',
+        fillOpacity: 0.7
+      };
+    }
+    geoLayer = L.geoJSON(data, {style: style}).addTo(map);
+    map.fitBounds(geoLayer.getBounds());
+  });
+
+// Handle draw
+map.on(L.Draw.Event.CREATED, function (e) {
+  let layer = e.layer;
+  drawnItems.addLayer(layer);
+
+  // Turf selection
+  let drawnGeo = layer.toGeoJSON();
+  let selected = geoData.features.filter(f => turf.booleanIntersects(f, drawnGeo));
+
+  updateSummary(selected);
+  updateMap(selected);
+});
+
+// Update summary
+function updateSummary(selected) {
+  let container = document.getElementById("summary-list");
+  if (selected.length === 0) {
+    container.innerHTML = "No ZIPs selected.";
+    return;
+  }
+
+  // Compute summary
+  let cols = Object.keys(selected[0].properties);
+  let summary = {};
+  cols.forEach(col => {
+    let vals = selected.map(f => f.properties[col]).filter(v => typeof v === "number");
+    if (vals.length > 0) {
+      if (col.toLowerCase().includes("med_income") ||
+          col.toLowerCase().includes("ratio") ||
+          col.toLowerCase().includes("_pct")) {
+        summary[col] = (vals.reduce((a,b) => a+b,0) / vals.length).toFixed(2);
+      } else {
+        summary[col] = vals.reduce((a,b) => a+b,0).toFixed(0);
+      }
+    }
+  });
+
+  // Display vertically
+  container.innerHTML = "";
+  for (let [k,v] of Object.entries(summary)) {
+    let div = document.createElement("div");
+    div.className = "summary-item";
+    div.textContent = k.charAt(0).toUpperCase() + k.slice(1) + ": " + v;
+    container.appendChild(div);
+  }
+
+  // Save for CSV
+  container.dataset.csv = JSON.stringify(summary);
+}
+
+// Update map with selection
+function updateMap(selected) {
+  geoLayer.eachLayer(l => {
+    let f = l.feature;
+    if (selected.includes(f)) {
+      l.setStyle({color:"#000", weight:2, fillOpacity:0.9});
+    } else {
+      l.setStyle({color:"#ccc", weight:1, fillOpacity:0.2});
+    }
+  });
+}
+
+// CSV download
+document.getElementById("download-csv").onclick = function() {
+  let container = document.getElementById("summary-list");
+  if (!container.dataset.csv) return;
+  let summary = JSON.parse(container.dataset.csv);
+  let csv = "Column,Value\n" + Object.entries(summary).map(([k,v]) => `${k},${v}`).join("\n");
+  let blob = new Blob([csv], {type:"text/csv;charset=utf-8"});
+  saveAs(blob, "summary.csv");
+};
+
+// PNG download
+document.getElementById("download-png").onclick = function() {
+  leafletImage(map, function(err, canvas) {
+    canvas.toBlob(function(blob) {
+      saveAs(blob, "map.png");
+    });
+  });
+};
+</script>
+</body>
+</html>
