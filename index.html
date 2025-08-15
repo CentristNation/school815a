@@ -1,188 +1,1626 @@
-<!DOCTYPE html>
+<!doctype html>
 <html lang="en">
 <head>
-  <meta charset="UTF-8" />
-  <title>ZIP Dashboard</title>
-  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width,initial-scale=1" />
+<title>Education Analytics Dashboard</title>
 
-  <!-- Leaflet + Draw -->
-  <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css"/>
-  <link rel="stylesheet" href="https://unpkg.com/leaflet-draw@1.0.4/dist/leaflet.draw.css"/>
-  <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
-  <script src="https://unpkg.com/leaflet-draw@1.0.4/dist/leaflet.draw.js"></script>
-  
-  <!-- Turf.js for spatial ops -->
-  <script src="https://cdn.jsdelivr.net/npm/@turf/turf@6/turf.min.js"></script>
+<!-- Leaflet + Draw + Geocoder CSS -->
+<link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css"/>
+<link rel="stylesheet" href="https://unpkg.com/leaflet-draw@1.0.4/dist/leaflet.draw.css"/>
+<link rel="stylesheet" href="https://unpkg.com/leaflet-control-geocoder/dist/Control.Geocoder.css"/>
 
-  <!-- FileSaver for CSV -->
-  <script src="https://cdnjs.cloudflare.com/ajax/libs/FileSaver.js/2.0.5/FileSaver.min.js"></script>
+<!-- DataTables -->
+<link rel="stylesheet" href="https://cdn.datatables.net/1.13.6/css/jquery.dataTables.min.css"/>
 
-  <!-- leaflet-image for PNG export -->
-  <script src="https://unpkg.com/leaflet-image/leaflet-image.js"></script>
+<!-- Google Fonts -->
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet">
 
-  <style>
-    body, html { margin:0; padding:0; height:100%; font-family:Arial, sans-serif; }
-    #app { display:grid; grid-template-columns: 300px 1fr 300px; height:100%; }
-    #summary { overflow-y:auto; padding:10px; border-right:1px solid #ccc; }
-    #map { width:100%; height:100%; }
-    #filters { overflow-y:auto; padding:10px; border-left:1px solid #ccc; background:#f9f9f9; }
+<style>
+  :root {
+    --primary-gradient: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+    --secondary-gradient: linear-gradient(135deg, #f093fb 0%, #f5576c 100%);
+    --accent-gradient: linear-gradient(135deg, #4facfe 0%, #00f2fe 100%);
+    --success-gradient: linear-gradient(135deg, #84fab0 0%, #8fd3f4 100%);
+    --warning-gradient: linear-gradient(135deg, #ffeaa7 0%, #fab1a0 100%);
+    --dark-bg: #0f1419;
+    --card-bg: rgba(255, 255, 255, 0.98);
+    --card-bg-dark: rgba(30, 41, 59, 0.95);
+    --text-primary: #1e293b;
+    --text-secondary: #64748b;
+    --text-light: #94a3b8;
+    --border-color: rgba(148, 163, 184, 0.2);
+    --shadow-sm: 0 2px 4px rgba(0, 0, 0, 0.05);
+    --shadow-md: 0 4px 12px rgba(0, 0, 0, 0.1);
+    --shadow-lg: 0 20px 25px -5px rgba(0, 0, 0, 0.1), 0 10px 10px -5px rgba(0, 0, 0, 0.04);
+    --sidebar-width: 580px;
+  }
 
-    h2 { margin-top:0; font-size:1.1em; border-bottom:1px solid #ddd; padding-bottom:4px; }
-    .summary-item { margin:6px 0; }
-    .button { margin:6px 0; padding:6px 10px; background:#007bff; color:white; border:none; border-radius:4px; cursor:pointer; }
-    .button:hover { background:#0056b3; }
-  </style>
+  * {
+    box-sizing: border-box;
+  }
+
+  html, body {
+    height: 100%;
+    margin: 0;
+    font-family: 'Inter', -apple-system, BlinkMacSystemFont, sans-serif;
+    background: var(--dark-bg);
+    color: var(--text-primary);
+    overflow: hidden;
+  }
+
+  #app {
+    display: flex;
+    height: 100vh;
+    position: relative;
+  }
+
+  #map {
+    flex: 1;
+    position: relative;
+    z-index: 1;
+  }
+
+  #sidebar {
+    width: var(--sidebar-width);
+    background: var(--card-bg);
+    backdrop-filter: blur(25px);
+    border-left: 1px solid var(--border-color);
+    display: flex;
+    flex-direction: column;
+    position: relative;
+    z-index: 10;
+    box-shadow: var(--shadow-lg);
+  }
+
+  .header {
+    background: var(--primary-gradient);
+    color: white;
+    padding: 28px;
+    position: relative;
+    overflow: hidden;
+  }
+
+  .header::before {
+    content: '';
+    position: absolute;
+    top: 0;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    background: url('data:image/svg+xml,<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 100 100"><defs><pattern id="grid" width="10" height="10" patternUnits="userSpaceOnUse"><path d="M 10 0 L 0 0 0 10" fill="none" stroke="rgba(255,255,255,0.1)" stroke-width="0.5"/></pattern></defs><rect width="100" height="100" fill="url(%23grid)"/></svg>');
+    opacity: 0.3;
+  }
+
+  .header h1 {
+    margin: 0;
+    font-size: 26px;
+    font-weight: 700;
+    position: relative;
+    z-index: 1;
+    background: linear-gradient(45deg, #ffffff, #e0e7ff);
+    background-clip: text;
+    -webkit-background-clip: text;
+    -webkit-text-fill-color: transparent;
+  }
+
+  .header .subtitle {
+    margin: 6px 0 0 0;
+    font-size: 15px;
+    opacity: 0.95;
+    font-weight: 400;
+    position: relative;
+    z-index: 1;
+    color: rgba(255, 255, 255, 0.9);
+  }
+
+  .content {
+    flex: 1;
+    overflow-y: auto;
+    padding: 0;
+  }
+
+  .section {
+    padding: 26px;
+    border-bottom: 1px solid var(--border-color);
+    transition: all 0.3s ease;
+    position: relative;
+  }
+
+  .section:hover {
+    background: rgba(248, 250, 252, 0.6);
+  }
+
+  .section-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-bottom: 18px;
+  }
+
+  .section-title {
+    font-size: 17px;
+    font-weight: 600;
+    color: var(--text-primary);
+    display: flex;
+    align-items: center;
+    gap: 10px;
+  }
+
+  .section-title::before {
+    content: '';
+    width: 4px;
+    height: 18px;
+    background: var(--accent-gradient);
+    border-radius: 2px;
+    box-shadow: 0 2px 4px rgba(79, 172, 254, 0.3);
+  }
+
+  .btn {
+    display: inline-flex;
+    align-items: center;
+    gap: 7px;
+    padding: 10px 18px;
+    border: none;
+    border-radius: 10px;
+    font-size: 14px;
+    font-weight: 500;
+    cursor: pointer;
+    transition: all 0.3s ease;
+    text-decoration: none;
+    position: relative;
+    overflow: hidden;
+    backdrop-filter: blur(10px);
+  }
+
+  .btn::before {
+    content: '';
+    position: absolute;
+    top: 0;
+    left: -100%;
+    width: 100%;
+    height: 100%;
+    background: linear-gradient(90deg, transparent, rgba(255,255,255,0.3), transparent);
+    transition: left 0.6s ease;
+  }
+
+  .btn:hover::before {
+    left: 100%;
+  }
+
+  .btn-primary {
+    background: var(--primary-gradient);
+    color: white;
+    box-shadow: 0 4px 15px rgba(102, 126, 234, 0.4);
+  }
+
+  .btn-primary:hover {
+    transform: translateY(-2px);
+    box-shadow: 0 8px 25px rgba(102, 126, 234, 0.6);
+  }
+
+  .btn-secondary {
+    background: rgba(148, 163, 184, 0.1);
+    color: var(--text-secondary);
+    border: 1px solid var(--border-color);
+    backdrop-filter: blur(10px);
+  }
+
+  .btn-secondary:hover {
+    background: rgba(148, 163, 184, 0.2);
+    transform: translateY(-1px);
+    box-shadow: var(--shadow-md);
+  }
+
+  .btn-accent {
+    background: var(--accent-gradient);
+    color: white;
+    box-shadow: 0 4px 15px rgba(79, 172, 254, 0.4);
+  }
+
+  .btn-accent:hover {
+    transform: translateY(-2px);
+    box-shadow: 0 8px 25px rgba(79, 172, 254, 0.6);
+  }
+
+  .btn-success {
+    background: var(--success-gradient);
+    color: white;
+    box-shadow: 0 4px 15px rgba(132, 250, 176, 0.4);
+  }
+
+  .btn-success:hover {
+    transform: translateY(-2px);
+    box-shadow: 0 8px 25px rgba(132, 250, 176, 0.6);
+  }
+
+  .controls {
+    display: flex;
+    gap: 10px;
+    flex-wrap: wrap;
+  }
+
+  .input-group {
+    display: flex;
+    gap: 10px;
+    align-items: center;
+    flex-wrap: wrap;
+  }
+
+  .form-input {
+    padding: 12px 16px;
+    border: 2px solid var(--border-color);
+    border-radius: 10px;
+    font-size: 14px;
+    transition: all 0.3s ease;
+    background: rgba(255, 255, 255, 0.9);
+    backdrop-filter: blur(10px);
+    min-width: 0;
+  }
+
+  .form-input:focus {
+    outline: none;
+    border-color: #667eea;
+    box-shadow: 0 0 0 3px rgba(102, 126, 234, 0.1);
+    background: white;
+  }
+
+  .form-input::placeholder {
+    color: var(--text-light);
+  }
+
+  .filter-grid {
+    display: grid;
+    gap: 16px;
+    max-height: 320px;
+    overflow-y: auto;
+    padding-right: 8px;
+  }
+
+  .filter-row {
+    display: grid;
+    grid-template-columns: 1fr auto auto;
+    gap: 14px;
+    align-items: center;
+    padding: 14px;
+    background: rgba(248, 250, 252, 0.7);
+    border-radius: 10px;
+    border: 1px solid var(--border-color);
+    transition: all 0.3s ease;
+    backdrop-filter: blur(10px);
+  }
+
+  .filter-row:hover {
+    transform: translateY(-2px);
+    box-shadow: var(--shadow-md);
+    background: rgba(248, 250, 252, 0.9);
+  }
+
+  .filter-label {
+    font-size: 14px;
+    font-weight: 500;
+    color: var(--text-primary);
+  }
+
+  .filter-input {
+    width: 85px;
+    padding: 8px 12px;
+    border: 1px solid var(--border-color);
+    border-radius: 8px;
+    font-size: 13px;
+    text-align: center;
+    transition: all 0.3s ease;
+  }
+
+  .filter-input:focus {
+    border-color: #667eea;
+    box-shadow: 0 0 0 2px rgba(102, 126, 234, 0.1);
+  }
+
+  .stats-card {
+    background: linear-gradient(135deg, rgba(255, 255, 255, 0.95), rgba(248, 250, 252, 0.95));
+    border-radius: 16px;
+    padding: 24px;
+    box-shadow: 0 8px 32px rgba(0, 0, 0, 0.1);
+    border: 1px solid rgba(255, 255, 255, 0.3);
+    transition: all 0.3s ease;
+    margin-bottom: 18px;
+    backdrop-filter: blur(20px);
+    position: relative;
+    overflow: hidden;
+  }
+
+  .stats-card::before {
+    content: '';
+    position: absolute;
+    top: 0;
+    left: 0;
+    right: 0;
+    height: 3px;
+    background: var(--accent-gradient);
+  }
+
+  .stats-card:hover {
+    transform: translateY(-3px);
+    box-shadow: 0 12px 40px rgba(0, 0, 0, 0.15);
+  }
+
+  .stats-row {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    padding: 10px 0;
+    border-bottom: 1px solid rgba(148, 163, 184, 0.15);
+  }
+
+  .stats-row:last-child {
+    border-bottom: none;
+  }
+
+  .stats-label {
+    font-weight: 500;
+    color: var(--text-secondary);
+    font-size: 14px;
+  }
+
+  .stats-value {
+    font-weight: 700;
+    color: var(--text-primary);
+    font-size: 18px;
+    background: var(--primary-gradient);
+    background-clip: text;
+    -webkit-background-clip: text;
+    -webkit-text-fill-color: transparent;
+  }
+
+  .table-container {
+    background: linear-gradient(135deg, rgba(255, 255, 255, 0.98), rgba(248, 250, 252, 0.98));
+    border-radius: 16px;
+    overflow: hidden;
+    box-shadow: 0 8px 32px rgba(0, 0, 0, 0.1);
+    border: 1px solid rgba(255, 255, 255, 0.3);
+    max-height: 450px;
+    overflow-y: auto;
+    backdrop-filter: blur(20px);
+    position: relative;
+  }
+
+  .table-container::before {
+    content: '';
+    position: absolute;
+    top: 0;
+    left: 0;
+    right: 0;
+    height: 3px;
+    background: var(--success-gradient);
+    z-index: 1;
+  }
+
+  .table-container table {
+    margin: 0 !important;
+    background: transparent !important;
+  }
+
+  .table-container .dataTables_wrapper {
+    background: transparent;
+  }
+
+  .tip {
+    background: linear-gradient(135deg, rgba(102, 126, 234, 0.08), rgba(118, 75, 162, 0.08));
+    border: 1px solid rgba(102, 126, 234, 0.2);
+    border-radius: 12px;
+    padding: 16px;
+    font-size: 13px;
+    color: var(--text-secondary);
+    margin-top: 14px;
+    backdrop-filter: blur(10px);
+    position: relative;
+    overflow: hidden;
+  }
+
+  .tip::before {
+    content: '💡';
+    position: absolute;
+    top: 12px;
+    right: 16px;
+    font-size: 16px;
+    opacity: 0.6;
+  }
+
+  .footer {
+    padding: 20px 26px;
+    background: linear-gradient(135deg, rgba(248, 250, 252, 0.8), rgba(241, 245, 249, 0.8));
+    border-top: 1px solid var(--border-color);
+    font-size: 13px;
+    color: var(--text-light);
+    text-align: center;
+    backdrop-filter: blur(10px);
+  }
+
+  /* Enhanced scrollbar styling */
+  .filter-grid::-webkit-scrollbar,
+  .content::-webkit-scrollbar,
+  .table-container::-webkit-scrollbar {
+    width: 8px;
+  }
+
+  .filter-grid::-webkit-scrollbar-track,
+  .content::-webkit-scrollbar-track,
+  .table-container::-webkit-scrollbar-track {
+    background: rgba(148, 163, 184, 0.1);
+    border-radius: 4px;
+  }
+
+  .filter-grid::-webkit-scrollbar-thumb,
+  .content::-webkit-scrollbar-thumb,
+  .table-container::-webkit-scrollbar-thumb {
+    background: var(--primary-gradient);
+    border-radius: 4px;
+    box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
+  }
+
+  /* Enhanced DataTables styling */
+  .dataTables_wrapper {
+    font-family: inherit;
+    padding: 20px;
+    background: transparent;
+  }
+
+  .dataTables_wrapper .dataTables_length,
+  .dataTables_wrapper .dataTables_filter,
+  .dataTables_wrapper .dataTables_info,
+  .dataTables_wrapper .dataTables_paginate {
+    color: var(--text-secondary);
+    font-size: 13px;
+    font-weight: 500;
+  }
+
+  .dataTables_wrapper .dataTables_paginate .paginate_button {
+    border-radius: 8px !important;
+    margin: 0 3px !important;
+    padding: 8px 12px !important;
+    background: rgba(102, 126, 234, 0.1) !important;
+    border: 1px solid rgba(102, 126, 234, 0.2) !important;
+    color: var(--text-primary) !important;
+    transition: all 0.3s ease !important;
+  }
+
+  .dataTables_wrapper .dataTables_paginate .paginate_button:hover {
+    background: var(--primary-gradient) !important;
+    color: white !important;
+    transform: translateY(-1px);
+    box-shadow: 0 4px 8px rgba(102, 126, 234, 0.3) !important;
+  }
+
+  .dataTables_wrapper .dataTables_paginate .paginate_button.current {
+    background: var(--primary-gradient) !important;
+    color: white !important;
+    box-shadow: 0 4px 8px rgba(102, 126, 234, 0.4) !important;
+  }
+
+  /* Enhanced table rows */
+  #summary tbody tr {
+    transition: all 0.3s ease;
+  }
+
+  #summary tbody tr:hover {
+    background: linear-gradient(135deg, rgba(102, 126, 234, 0.1), rgba(79, 172, 254, 0.1)) !important;
+    transform: translateX(4px);
+    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.1);
+  }
+
+  #summary thead th {
+    background: linear-gradient(135deg, #f8fafc, #e2e8f0) !important;
+    color: var(--text-primary) !important;
+    font-weight: 600 !important;
+    padding: 16px 12px !important;
+    border-bottom: 2px solid var(--border-color) !important;
+    position: relative;
+  }
+
+  #summary tbody td {
+    padding: 14px 12px !important;
+    border-bottom: 1px solid rgba(148, 163, 184, 0.1) !important;
+    font-weight: 500;
+  }
+
+  /* Responsive design */
+  @media (max-width: 1200px) {
+    :root {
+      --sidebar-width: 500px;
+    }
+  }
+
+  @media (max-width: 1024px) {
+    :root {
+      --sidebar-width: 440px;
+    }
+  }
+
+  @media (max-width: 768px) {
+    #app {
+      flex-direction: column;
+    }
+
+    #sidebar {
+      width: 100%;
+      height: 55vh;
+      border-left: none;
+      border-top: 1px solid var(--border-color);
+    }
+
+    #map {
+      height: 45vh;
+    }
+
+    .section {
+      padding: 18px;
+    }
+
+    .header {
+      padding: 20px;
+    }
+
+    .filter-row {
+      grid-template-columns: 1fr;
+      gap: 10px;
+    }
+
+    .input-group {
+      flex-direction: column;
+      align-items: stretch;
+    }
+  }
+
+  /* Loading and animations */
+  @keyframes pulse {
+    0%, 100% { opacity: 1; }
+    50% { opacity: 0.6; }
+  }
+
+  @keyframes slideIn {
+    from { transform: translateY(20px); opacity: 0; }
+    to { transform: translateY(0); opacity: 1; }
+  }
+
+  .loading {
+    animation: pulse 2s infinite;
+  }
+
+  .slide-in {
+    animation: slideIn 0.5s ease-out;
+  }
+
+  /* Selection feedback */
+  .selected-feedback {
+    position: fixed;
+    top: 20px;
+    right: 20px;
+    background: var(--success-gradient);
+    color: white;
+    padding: 12px 20px;
+    border-radius: 10px;
+    box-shadow: 0 4px 15px rgba(132, 250, 176, 0.4);
+    z-index: 1000;
+    font-weight: 600;
+    animation: slideIn 0.3s ease-out;
+  }
+
+  /* Icon placeholders with enhanced styling */
+  .icon {
+    width: 18px;
+    height: 18px;
+    display: inline-block;
+    background: currentColor;
+    mask-size: contain;
+    mask-repeat: no-repeat;
+    mask-position: center;
+    filter: drop-shadow(0 1px 2px rgba(0, 0, 0, 0.1));
+  }
+
+  .icon-map { mask-image: url('data:image/svg+xml,<svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 20l-5.447-2.724A1 1 0 013 16.382V5.618a1 1 0 011.447-.894L9 7m0 13l6-3m-6 3V7m6 10l4.553 2.276A1 1 0 0021 18.382V7.618a1 1 0 00-1.447-.894L15 4m0 13V4m0 0L9 7"/></svg>'); }
+  .icon-filter { mask-image: url('data:image/svg+xml,<svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M3 4a1 1 0 011-1h16a1 1 0 011 1v2.586a1 1 0 01-.293.707l-6.414 6.414a1 1 0 00-.293.707V17l-4 4v-6.586a1 1 0 00-.293-.707L3.293 7.414A1 1 0 013 6.707V4z"/></svg>'); }
+  .icon-table { mask-image: url('data:image/svg+xml,<svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M3 10h18M3 14h18m-9-4v8m-7 0h14a2 2 0 002-2V8a2 2 0 00-2-2H5a2 2 0 00-2 2v8a2 2 0 002 2z"/></svg>'); }
+
+  /* Empty state styling */
+  .empty-state {
+    text-align: center;
+    padding: 40px 20px;
+    color: var(--text-light);
+  }
+
+  .empty-state .icon {
+    width: 48px;
+    height: 48px;
+    margin: 0 auto 16px;
+    opacity: 0.5;
+  }
+
+  .empty-state h3 {
+    margin: 0 0 8px 0;
+    font-size: 18px;
+    font-weight: 600;
+    color: var(--text-secondary);
+  }
+
+  .empty-state p {
+    margin: 0;
+    font-size: 14px;
+    line-height: 1.5;
+  }
+</style>
 </head>
 <body>
 <div id="app">
-  <!-- Left summary panel -->
-  <div id="summary">
-    <h2>Summary</h2>
-    <div id="summary-list">Draw a shape to see summary</div>
-    <button class="button" id="download-csv">Download CSV</button>
-    <button class="button" id="download-png">Download Map PNG</button>
-  </div>
-
-  <!-- Map -->
   <div id="map"></div>
+  <div id="sidebar">
+    <div class="header">
+      <h1>📊 Education Analytics</h1>
+      <div class="subtitle">Advanced Geographic Intelligence Platform</div>
+    </div>
 
-  <!-- Right filter panel -->
-  <div id="filters">
-    <h2>Filters</h2>
-    <p>(Optional future filters go here)</p>
+    <div class="content">
+      <!-- Spatial Tools Section -->
+      <div class="section slide-in">
+        <div class="section-header">
+          <div class="section-title">
+            <span class="icon icon-map"></span>
+            Spatial Selection Tools
+          </div>
+          <div class="controls">
+            <button id="zoomAll" class="btn btn-secondary">🔍 Zoom All</button>
+            <button id="resetAll" class="btn btn-primary">🔄 Reset</button>
+          </div>
+        </div>
+        
+        <div class="controls">
+          <button id="drawBtn" class="btn btn-accent">✏️ Draw Selection</button>
+          <button id="pointBufferBtn" class="btn btn-accent">📍 Point Buffer</button>
+          <button id="clearDraw" class="btn btn-secondary">🗑️ Clear Selection</button>
+          <button id="debugBtn" class="btn btn-secondary">🐛 Debug Info</button>
+        </div>
+        
+        <div class="tip">
+          <strong>Selection Methods:</strong><br>
+          • <strong>Click</strong> individual ZIP codes to toggle selection<br>
+          • <strong>Draw</strong> rectangles/polygons to select areas<br>
+          • <strong>Point Buffer</strong> to select within radius<br>
+          Selected areas appear in red and are included in summary table.
+        </div>
+      </div>
+
+      <!-- Search & Filters Section -->
+      <div class="section slide-in">
+        <div class="section-header">
+          <div class="section-title">
+            <span class="icon icon-filter"></span>
+            Search & Filters
+          </div>
+          <div class="input-group">
+            <input id="addressSearch" class="form-input" placeholder="🔍 Search address..." style="width: 140px;">
+            <input id="zipSearch" class="form-input" placeholder="📮 ZIP code..." style="width: 100px;">
+          </div>
+        </div>
+        
+        <div class="filter-grid" id="filters"></div>
+        
+        <div class="tip">
+          <strong>Smart Filtering:</strong> Fields ending in "_pct" are averaged; others are summed during aggregation. Filters apply to all visible data.
+        </div>
+      </div>
+
+      <!-- Selection Stats -->
+      <div class="section slide-in">
+        <div class="stats-card">
+          <div class="stats-row">
+            <span class="stats-label">📊 Total Features:</span>
+            <span class="stats-value" id="totalCount">0</span>
+          </div>
+          <div class="stats-row">
+            <span class="stats-label">🔍 Filtered Features:</span>
+            <span class="stats-value" id="filteredCount">0</span>
+          </div>
+          <div class="stats-row">
+            <span class="stats-label">✅ Selected Features:</span>
+            <span class="stats-value" id="selectedCount">0</span>
+          </div>
+          <div class="stats-row">
+            <span class="stats-label">📮 Unique ZIPs:</span>
+            <span class="stats-value" id="uniqueZipsCount">0</span>
+          </div>
+        </div>
+      </div>
+
+      <!-- Data Summary Section -->
+      <div class="section slide-in">
+        <div class="section-header">
+          <div class="section-title">
+            <span class="icon icon-table"></span>
+            Aggregated Summary by ZIP Code
+          </div>
+          <div class="controls">
+            <button id="exportCSV" class="btn btn-success">📥 Export CSV</button>
+            <button id="downloadGeo" class="btn btn-secondary">🗺️ Download GeoJSON</button>
+          </div>
+        </div>
+        
+        <div class="table-container">
+          <table id="summary" class="display" width="100%">
+            <thead></thead>
+            <tbody></tbody>
+          </table>
+        </div>
+      </div>
+    </div>
+
+    <div class="footer">
+      <strong>📄 data.geojson</strong> • Select features to see aggregated results
+    </div>
   </div>
 </div>
 
+<!-- Libraries -->
+<script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+<script src="https://unpkg.com/leaflet-draw@1.0.4/dist/leaflet.draw.js"></script>
+<script src="https://unpkg.com/leaflet-control-geocoder/dist/Control.Geocoder.js"></script>
+<script src="https://unpkg.com/leaflet.markercluster@1.5.3/dist/leaflet.markercluster.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/turf@6.5.0/turf.min.js"></script>
+<script src="https://code.jquery.com/jquery-3.7.1.min.js"></script>
+<script src="https://cdn.datatables.net/1.13.6/js/jquery.dataTables.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/FileSaver.js/2.0.5/FileSaver.min.js"></script>
+
 <script>
-let map = L.map('map').setView([37.8, -96], 4);
+(async function(){
+  /* -----------------------
+     Configuration
+     ----------------------- */
+  const GEOJSON_FILE = "data.geojson";
+  
+  const COLUMN_LABELS = {};
 
-// Basemap
-L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
-  maxZoom:19,
-  attribution:'© OpenStreetMap'
-}).addTo(map);
-
-let geoLayer;
-let drawnItems = new L.FeatureGroup();
-map.addLayer(drawnItems);
-
-// Draw controls
-let drawControl = new L.Control.Draw({
-  draw: { polygon:true, rectangle:true, circle:false, marker:false, polyline:false },
-  edit: { featureGroup: drawnItems }
-});
-map.addControl(drawControl);
-
-let geoData; // store original data
-
-// Load GeoJSON (already EPSG:4326)
-fetch("data_wgs84.geojson")
-  .then(res => res.json())
-  .then(data => {
-    geoData = data;
-    // Color scale by population
-    function getColor(pop) {
-      return pop > 100000 ? '#800026' :
-             pop > 50000  ? '#BD0026' :
-             pop > 20000  ? '#E31A1C' :
-             pop > 10000  ? '#FC4E2A' :
-             pop > 5000   ? '#FD8D3C' :
-             pop > 1000   ? '#FEB24C' :
-                            '#FFEDA0';
-    }
-    function style(feature) {
-      return {
-        fillColor: getColor(feature.properties.population || 0),
-        weight: 1,
-        opacity: 1,
-        color: 'white',
-        fillOpacity: 0.7
-      };
-    }
-    geoLayer = L.geoJSON(data, {style: style}).addTo(map);
-    map.fitBounds(geoLayer.getBounds());
-  });
-
-// Handle draw
-map.on(L.Draw.Event.CREATED, function (e) {
-  let layer = e.layer;
-  drawnItems.addLayer(layer);
-
-  // Turf selection
-  let drawnGeo = layer.toGeoJSON();
-  let selected = geoData.features.filter(f => turf.booleanIntersects(f, drawnGeo));
-
-  updateSummary(selected);
-  updateMap(selected);
-});
-
-// Update summary
-function updateSummary(selected) {
-  let container = document.getElementById("summary-list");
-  if (selected.length === 0) {
-    container.innerHTML = "No ZIPs selected.";
-    return;
+  function humanizeKey(k){
+    if (COLUMN_LABELS[k]) return COLUMN_LABELS[k];
+    const s = k.replace(/_/g,' ').replace(/\s+/g,' ').trim();
+    return s.replace(/\w\S*/g, (w)=> w.charAt(0).toUpperCase()+w.slice(1).toLowerCase());
   }
 
-  // Compute summary
-  let cols = Object.keys(selected[0].properties);
-  let summary = {};
-  cols.forEach(col => {
-    let vals = selected.map(f => f.properties[col]).filter(v => typeof v === "number");
-    if (vals.length > 0) {
-      if (col.toLowerCase().includes("med_income") ||
-          col.toLowerCase().includes("ratio") ||
-          col.toLowerCase().includes("_pct")) {
-        summary[col] = (vals.reduce((a,b) => a+b,0) / vals.length).toFixed(2);
-      } else {
-        summary[col] = vals.reduce((a,b) => a+b,0).toFixed(0);
-      }
-    }
-  });
-
-  // Display vertically
-  container.innerHTML = "";
-  for (let [k,v] of Object.entries(summary)) {
-    let div = document.createElement("div");
-    div.className = "summary-item";
-    div.textContent = k.charAt(0).toUpperCase() + k.slice(1) + ": " + v;
-    container.appendChild(div);
+  // Enhanced feedback functions
+  function showFeedback(message, type = 'success') {
+    const feedback = document.createElement('div');
+    feedback.className = 'selected-feedback';
+    feedback.textContent = message;
+    feedback.style.background = type === 'success' ? 'var(--success-gradient)' : 'var(--warning-gradient)';
+    document.body.appendChild(feedback);
+    
+    setTimeout(() => {
+      feedback.style.opacity = '0';
+      setTimeout(() => feedback.remove(), 300);
+    }, 2000);
   }
 
-  // Save for CSV
-  container.dataset.csv = JSON.stringify(summary);
-}
+  /* -----------------------
+     Map Setup
+     ----------------------- */
+  const map = L.map('map', {
+    zoomControl: true,
+    attributionControl: true
+  }).setView([39.5,-98.35], 4);
+  
+  L.tileLayer('https://{s}.basemaps.cartocdn.com/light_all/{z}/{x}/{y}{r}.png', {
+    attribution: '© OpenStreetMap contributors © CARTO',
+    subdomains: 'abcd',
+    maxZoom: 19
+  }).addTo(map);
 
-// Update map with selection
-function updateMap(selected) {
-  geoLayer.eachLayer(l => {
-    let f = l.feature;
-    if (selected.includes(f)) {
-      l.setStyle({color:"#000", weight:2, fillOpacity:0.9});
+  const geocoder = L.Control.geocoder({
+    defaultMarkGeocode: false,
+    placeholder: 'Search any address...',
+    geocoder: new L.Control.Geocoder.Nominatim()
+  }).on('markgeocode', function(e){
+    const bbox = e.geocode.bbox;
+    if (bbox) {
+      map.fitBounds([[bbox[0], bbox[1]],[bbox[2], bbox[3]]]);
     } else {
-      l.setStyle({color:"#ccc", weight:1, fillOpacity:0.2});
+      map.setView([e.geocode.center.lat, e.geocode.center.lng], 16);
+    }
+    showFeedback(`📍 Found: ${e.geocode.name}`);
+  }).addTo(map);
+
+  // DOM References
+  const filtersDiv = document.getElementById('filters');
+  const zipSearch = document.getElementById('zipSearch');
+  const addressSearchInput = document.getElementById('addressSearch');
+  const exportCSVBtn = document.getElementById('exportCSV');
+  const downloadGeoBtn = document.getElementById('downloadGeo');
+  const zoomAllBtn = document.getElementById('zoomAll');
+  const resetAllBtn = document.getElementById('resetAll');
+  const clearDrawBtn = document.getElementById('clearDraw');
+
+  // Stats elements
+  const totalCountEl = document.getElementById('totalCount');
+  const filteredCountEl = document.getElementById('filteredCount');
+  const selectedCountEl = document.getElementById('selectedCount');
+  const uniqueZipsCountEl = document.getElementById('uniqueZipsCount');
+
+  // Address search with enhanced feedback
+  addressSearchInput.addEventListener('keydown', (ev)=>{
+    if (ev.key === 'Enter'){
+      ev.preventDefault();
+      const q = addressSearchInput.value.trim();
+      if (!q) return;
+      
+      addressSearchInput.classList.add('loading');
+      
+      geocoder.options.geocoder.geocode(q, (results)=>{
+        addressSearchInput.classList.remove('loading');
+        if (!results || !results.length) { 
+          showFeedback('❌ No results found for that address', 'warning');
+          return; 
+        }
+        const r = results[0];
+        const bbox = r.bbox;
+        if (bbox) map.fitBounds([[bbox[0], bbox[1]],[bbox[2], bbox[3]]]);
+        else map.setView([r.center.lat, r.center.lng], 16);
+      });
     }
   });
-}
 
-// CSV download
-document.getElementById("download-csv").onclick = function() {
-  let container = document.getElementById("summary-list");
-  if (!container.dataset.csv) return;
-  let summary = JSON.parse(container.dataset.csv);
-  let csv = "Column,Value\n" + Object.entries(summary).map(([k,v]) => `${k},${v}`).join("\n");
-  let blob = new Blob([csv], {type:"text/csv;charset=utf-8"});
-  saveAs(blob, "summary.csv");
-};
-
-// PNG download
-document.getElementById("download-png").onclick = function() {
-  leafletImage(map, function(err, canvas) {
-    canvas.toBlob(function(blob) {
-      saveAs(blob, "map.png");
+  /* -----------------------
+     Data Loading with Sample Data
+     ----------------------- */
+  let rawData;
+  try {
+    const res = await fetch(GEOJSON_FILE);
+    if (!res.ok) {
+      console.warn(`${GEOJSON_FILE} not found, generating sample data`);
+      rawData = generateSampleData();
+    } else {
+      rawData = await res.json();
+    }
+  } catch (e) {
+    console.warn('Generating sample education data for demonstration');
+    rawData = generateSampleData();
+  }
+  
+  // Generate sample education data if file not found
+  function generateSampleData() {
+    const features = [];
+    const sampleZips = ['10001', '10002', '10003', '90210', '90211', '77001', '77002', '30309', '30308'];
+    
+    sampleZips.forEach((zip, index) => {
+      const lat = 40.7589 + (Math.random() - 0.5) * 0.1;
+      const lng = -73.9851 + (Math.random() - 0.5) * 0.1;
+      
+      features.push({
+        type: 'Feature',
+        properties: {
+          ZIP_CODE: zip,
+          total_students: Math.floor(Math.random() * 5000) + 1000,
+          graduation_rate_pct: Math.random() * 30 + 70,
+          college_ready_pct: Math.random() * 40 + 40,
+          poverty_rate_pct: Math.random() * 50 + 10,
+          teacher_student_ratio: Math.random() * 10 + 15,
+          avg_test_score: Math.random() * 200 + 400
+        },
+        geometry: {
+          type: 'Polygon',
+          coordinates: [[
+            [lng - 0.01, lat - 0.01],
+            [lng + 0.01, lat - 0.01],
+            [lng + 0.01, lat + 0.01],
+            [lng - 0.01, lat + 0.01],
+            [lng - 0.01, lat - 0.01]
+          ]]
+        }
+      });
     });
+    
+    return { type: 'FeatureCollection', features };
+  }
+  
+  const allFeatures = rawData.features || [];
+  if (!allFeatures.length) {
+    alert('GeoJSON file contains no features.');
+    throw new Error('No features found');
+  }
+
+  // Detect field structure
+  const sampleProps = allFeatures[0].properties || {};
+  const zipKey = Object.keys(sampleProps).find(k => /zip/i.test(k)) || Object.keys(sampleProps)[0];
+  const numericFields = Object.keys(sampleProps).filter(k => 
+    typeof sampleProps[k] === 'number' && k.toLowerCase() !== zipKey.toLowerCase()
+  );
+
+  console.log(`✅ ZIP field: ${zipKey}, Numeric fields: ${numericFields.length}`);
+
+  /* -----------------------
+     State Management
+     ----------------------- */
+  const state = { 
+    filters: {}, 
+    drawnLayer: null, 
+    selectedFeatures: new Set(),
+    filteredFeatures: [...allFeatures],
+    aggregatedData: []
+  };
+
+  totalCountEl.textContent = allFeatures.length;
+
+  /* -----------------------
+     Filter UI with Enhanced Styling
+     ----------------------- */
+  numericFields.forEach(field => {
+    state.filters[field] = {min: null, max: null};
+    
+    const row = document.createElement('div');
+    row.className = 'filter-row';
+    
+    const label = document.createElement('div');
+    label.className = 'filter-label';
+    label.textContent = humanizeKey(field);
+    
+    const minInput = document.createElement('input');
+    minInput.type = 'number';
+    minInput.className = 'filter-input';
+    minInput.placeholder = 'Min';
+    
+    const maxInput = document.createElement('input');
+    maxInput.type = 'number';
+    maxInput.className = 'filter-input';
+    maxInput.placeholder = 'Max';
+    
+    minInput.addEventListener('input', () => {
+      state.filters[field].min = minInput.value === '' ? null : +minInput.value;
+      updateDisplay();
+    });
+    
+    maxInput.addEventListener('input', () => {
+      state.filters[field].max = maxInput.value === '' ? null : +maxInput.value;
+      updateDisplay();
+    });
+    
+    row.appendChild(label);
+    row.appendChild(minInput);
+    row.appendChild(maxInput);
+    filtersDiv.appendChild(row);
   });
-};
+
+  /* -----------------------
+     Map Layer Styling with Enhanced Visuals
+     ----------------------- */
+  const styleDefault = { 
+    color: '#667eea', 
+    weight: 2, 
+    fillOpacity: 0.15,
+    fillColor: '#667eea'
+  };
+  
+  const styleSelected = { 
+    color: '#f5576c', 
+    weight: 3, 
+    fillOpacity: 0.5,
+    fillColor: '#f5576c'
+  };
+
+  const styleHover = {
+    color: '#4facfe',
+    weight: 3,
+    fillOpacity: 0.3,
+    fillColor: '#4facfe'
+  };
+
+  let geoLayer = null;
+
+  function createGeoLayer(features) {
+    if (geoLayer) map.removeLayer(geoLayer);
+    
+    geoLayer = L.geoJSON(features, {
+      style: (feature) => {
+        const featureIndex = allFeatures.findIndex(f => f === feature);
+        return state.selectedFeatures.has(featureIndex) ? styleSelected : styleDefault;
+      },
+      onEachFeature: (feature, layer) => {
+        // Click to toggle selection with feedback
+        layer.on('click', (e) => {
+          L.DomEvent.stopPropagation(e);
+          const featureIndex = allFeatures.findIndex(f => f === feature);
+          
+          if (state.selectedFeatures.has(featureIndex)) {
+            state.selectedFeatures.delete(featureIndex);
+            layer.setStyle(styleDefault);
+            showFeedback(`➖ Deselected ZIP: ${feature.properties[zipKey]}`);
+          } else {
+            state.selectedFeatures.add(featureIndex);
+            layer.setStyle(styleSelected);
+            showFeedback(`✅ Selected ZIP: ${feature.properties[zipKey]}`);
+          }
+          
+          // Immediate update with animation
+          setTimeout(() => {
+            updateAggregation();
+            updateStats();
+          }, 50);
+        });
+
+        // Enhanced hover effects
+        layer.on('mouseover', function() {
+          const featureIndex = allFeatures.findIndex(f => f === feature);
+          if (!state.selectedFeatures.has(featureIndex)) {
+            layer.setStyle(styleHover);
+          }
+        });
+
+        layer.on('mouseout', function() {
+          const featureIndex = allFeatures.findIndex(f => f === feature);
+          if (!state.selectedFeatures.has(featureIndex)) {
+            layer.setStyle(styleDefault);
+          } else {
+            layer.setStyle(styleSelected);
+          }
+        });
+
+        // Enhanced popup with better formatting
+        const props = feature.properties || {};
+        const zipValue = props[zipKey] ?? 'N/A';
+        
+        let popupContent = `<div style="font-family: Inter, sans-serif; min-width: 220px; background: white; border-radius: 12px; padding: 8px;">`;
+        popupContent += `<div style="font-weight: 700; font-size: 18px; color: #667eea; margin-bottom: 12px; padding: 8px; background: linear-gradient(135deg, #f8fafc, #e2e8f0); border-radius: 8px; text-align: center;">📮 ${humanizeKey(zipKey)}: ${zipValue}</div>`;
+        
+        Object.entries(props).slice(0, 6).forEach(([key, value]) => {
+          if (key === zipKey) return;
+          const label = humanizeKey(key);
+          let displayValue = value;
+          let icon = '📊';
+          
+          if (typeof value === 'number') {
+            if (/_pct$/i.test(key)) {
+              displayValue = value.toFixed(1) + '%';
+              icon = '📈';
+            } else {
+              displayValue = Math.round(value).toLocaleString();
+              icon = '🔢';
+            }
+          }
+          popupContent += `<div style="margin: 6px 0; padding: 4px 0; border-bottom: 1px solid #f1f5f9; display: flex; justify-content: space-between; align-items: center;">
+            <span style="font-weight: 500; color: #64748b;">${icon} ${label}:</span> 
+            <span style="font-weight: 600; color: #1e293b;">${displayValue}</span>
+          </div>`;
+        });
+        
+        popupContent += `</div>`;
+        layer.bindPopup(popupContent);
+      }
+    }).addTo(map);
+    
+    return geoLayer;
+  }
+
+  // Initial layer creation
+  createGeoLayer(allFeatures);
+  if (allFeatures.length > 0) {
+    map.fitBounds(geoLayer.getBounds());
+  }
+
+  /* -----------------------
+     Drawing Tools with Enhanced Feedback
+     ----------------------- */
+  const drawnItems = new L.FeatureGroup().addTo(map);
+  const drawControl = new L.Control.Draw({
+    edit: { featureGroup: drawnItems, remove: true },
+    draw: { 
+      marker: false, 
+      circle: false, 
+      polyline: false, 
+      circlemarker: false, 
+      rectangle: true, 
+      polygon: true 
+    }
+  });
+  map.addControl(drawControl);
+
+  map.on(L.Draw.Event.CREATED, e => {
+    drawnItems.clearLayers();
+    drawnItems.addLayer(e.layer);
+    state.drawnLayer = e.layer;
+    selectFeaturesInDrawnArea();
+    showFeedback('🎯 Area selected! Features updated.');
+  });
+
+  map.on(L.Draw.Event.EDITED, e => { 
+    state.drawnLayer = drawnItems.getLayers()[0] || null; 
+    selectFeaturesInDrawnArea();
+    showFeedback('✏️ Selection area updated!');
+  });
+
+  map.on(L.Draw.Event.DELETED, e => { 
+    state.drawnLayer = null; 
+    updateDisplay();
+    showFeedback('🗑️ Drawing cleared!');
+  });
+
+  function selectFeaturesInDrawnArea() {
+    if (!state.drawnLayer) return;
+    
+    console.log('=== DRAW SELECTION START ===');
+    
+    // Clear previous selections
+    const previousCount = state.selectedFeatures.size;
+    state.selectedFeatures.clear();
+    
+    const drawnGeoJSON = state.drawnLayer.toGeoJSON();
+    console.log('Drawn layer type:', drawnGeoJSON.geometry.type);
+    
+    let selectedCount = 0;
+    
+    allFeatures.forEach((feature, featureIndex) => {
+      try {
+        // Enhanced selection logic with better bounds checking
+        const featureBounds = turf.bbox(feature);
+        const drawnBounds = turf.bbox(drawnGeoJSON);
+        
+        // Check if bounding boxes overlap
+        const boundsOverlap = !(featureBounds[2] < drawnBounds[0] || 
+                               featureBounds[0] > drawnBounds[2] || 
+                               featureBounds[3] < drawnBounds[1] || 
+                               featureBounds[1] > drawnBounds[3]);
+        
+        if (boundsOverlap) {
+          try {
+            const featureCentroid = turf.centroid(feature);
+            if (turf.booleanPointInPolygon(featureCentroid, drawnGeoJSON)) {
+              state.selectedFeatures.add(featureIndex);
+              selectedCount++;
+            }
+          } catch(e) {
+            // Fallback to bounds overlap
+            state.selectedFeatures.add(featureIndex);
+            selectedCount++;
+          }
+        }
+      } catch(e) {
+        console.warn('Error processing feature', featureIndex, e);
+      }
+    });
+    
+    console.log(`=== DRAW SELECTION END: Selected ${selectedCount} features ===`);
+    showFeedback(`🎯 Selected ${selectedCount} features (${selectedCount - previousCount >= 0 ? '+' : ''}${selectedCount - previousCount})`);
+    updateDisplay();
+  }
+
+  // Enhanced button handlers
+  document.getElementById('drawBtn').addEventListener('click', () => {
+    showFeedback("✏️ Use the drawing tools (square/polygon icons) in the top-left corner of the map", 'warning');
+  });
+
+  document.getElementById('pointBufferBtn').addEventListener('click', () => {
+    showFeedback('📍 Click anywhere on the map to place a buffer point', 'warning');
+    const handler = (ev) => {
+      map.off('click', handler);
+      const latlng = ev.latlng;
+      const miles = prompt('Enter buffer radius in miles:', '5');
+      if (!miles || isNaN(+miles)) return;
+      
+      const radiusMeters = +miles * 1609.344;
+      drawnItems.clearLayers();
+      
+      const circle = L.circle(latlng, {
+        radius: radiusMeters, 
+        color: '#4facfe', 
+        weight: 3, 
+        fillOpacity: 0.2,
+        fillColor: '#4facfe'
+      }).addTo(drawnItems);
+      
+      state.drawnLayer = circle;
+      selectFeaturesInDrawnArea();
+    };
+    map.on('click', handler);
+  });
+
+  clearDrawBtn.addEventListener('click', () => {
+    drawnItems.clearLayers();
+    state.drawnLayer = null;
+    updateDisplay();
+    showFeedback('🗑️ Drawing selection cleared!');
+  });
+
+  document.getElementById('debugBtn').addEventListener('click', () => {
+    const selectedZips = Array.from(state.selectedFeatures).map(index => {
+      const feature = allFeatures[index];
+      return feature.properties[zipKey];
+    });
+    
+    console.log('=== ENHANCED DEBUG INFO ===');
+    console.log('📊 Total features loaded:', allFeatures.length);
+    console.log('✅ Selected feature indices:', Array.from(state.selectedFeatures));
+    console.log('🔑 ZIP key detected as:', zipKey);
+    console.log('📈 Numeric fields detected:', numericFields);
+    console.log('📋 Aggregated data rows:', state.aggregatedData.length);
+    console.log('🎯 Current drawn layer:', state.drawnLayer);
+    console.log('📮 Selected ZIP codes:', selectedZips);
+    
+    if (allFeatures.length > 0) {
+      console.log('📄 Sample feature properties:', allFeatures[0].properties);
+    }
+    
+    showFeedback(`🐛 Debug info logged to console - check developer tools!`);
+  });
+
+  zoomAllBtn.addEventListener('click', () => {
+    if (geoLayer) {
+      map.fitBounds(geoLayer.getBounds());
+      showFeedback('🔍 Zoomed to show all features');
+    }
+  });
+
+  resetAllBtn.addEventListener('click', () => {
+    drawnItems.clearLayers(); 
+    state.drawnLayer = null; 
+    state.selectedFeatures.clear();
+    
+    document.querySelectorAll('#filters input[type=number]').forEach(input => input.value = '');
+    Object.keys(state.filters).forEach(k => state.filters[k] = {min: null, max: null});
+    
+    zipSearch.value = ''; 
+    addressSearchInput.value = '';
+    
+    updateDisplay();
+    showFeedback('🔄 Dashboard reset to initial state');
+  });
+
+  /* -----------------------
+     Enhanced Filtering Logic
+     ----------------------- */
+  function applyFilters() {
+    state.filteredFeatures = allFeatures.filter(feature => {
+      const props = feature.properties || {};
+      
+      // Numeric filters
+      for (const field of numericFields) {
+        const value = props[field];
+        const {min, max} = state.filters[field] || {};
+        if (min !== null && value < min) return false;
+        if (max !== null && value > max) return false;
+      }
+      
+      // ZIP search
+      const query = zipSearch.value.trim().toLowerCase();
+      if (query) {
+        const zipValue = (props[zipKey] ?? '').toString().toLowerCase();
+        if (!zipValue.includes(query)) return false;
+      }
+      
+      return true;
+    });
+  }
+
+  zipSearch.addEventListener('input', updateDisplay);
+
+  /* -----------------------
+     Enhanced Aggregation Logic
+     ----------------------- */
+  function updateAggregation() {
+    console.log('=== AGGREGATION START ===');
+    console.log('Selected features count:', state.selectedFeatures.size);
+    
+    if (state.selectedFeatures.size === 0) {
+      state.aggregatedData = [];
+      renderTable([]);
+      return;
+    }
+
+    const selectedFeaturesList = Array.from(state.selectedFeatures).map(index => allFeatures[index]);
+    const zipGroups = {};
+    
+    selectedFeaturesList.forEach((feature) => {
+      const props = feature.properties || {};
+      const zipValue = String(props[zipKey] || 'Unknown');
+      
+      if (!zipGroups[zipValue]) {
+        zipGroups[zipValue] = [];
+      }
+      zipGroups[zipValue].push(props);
+    });
+
+    const aggregatedResults = [];
+    
+    Object.entries(zipGroups).forEach(([zipCode, records]) => {
+      const aggregatedRecord = { [zipKey]: zipCode };
+      
+      numericFields.forEach(fieldName => {
+        const values = records
+          .map(record => record[fieldName])
+          .filter(val => typeof val === 'number' && !isNaN(val));
+        
+        if (values.length === 0) {
+          aggregatedRecord[fieldName] = 0;
+          return;
+        }
+        
+        if (fieldName.toLowerCase().includes('pct') || fieldName.toLowerCase().includes('percent')) {
+          const sum = values.reduce((a, b) => a + b, 0);
+          aggregatedRecord[fieldName] = sum / values.length;
+        } else {
+          aggregatedRecord[fieldName] = values.reduce((a, b) => a + b, 0);
+        }
+      });
+      
+      aggregatedResults.push(aggregatedRecord);
+    });
+
+    aggregatedResults.sort((a, b) => String(a[zipKey]).localeCompare(String(b[zipKey])));
+    
+    state.aggregatedData = aggregatedResults;
+    console.log('Final aggregated data:', state.aggregatedData);
+    console.log('=== AGGREGATION END ===');
+    
+    renderTable(state.aggregatedData);
+  }
+
+  /* -----------------------
+     Enhanced Table Rendering
+     ----------------------- */
+  let dataTable = null;
+
+  function renderTable(data) {
+    console.log('=== TABLE RENDER START ===');
+    console.log('Rendering table with', data.length, 'aggregated ZIP codes');
+    
+    const thead = document.querySelector('#summary thead');
+    const tbody = document.querySelector('#summary tbody');
+    
+    if ($.fn.dataTable.isDataTable('#summary')) {
+      $('#summary').DataTable().clear().destroy();
+    }
+    
+    thead.innerHTML = '';
+    tbody.innerHTML = '';
+
+    if (data.length === 0) {
+      tbody.innerHTML = `
+        <tr>
+          <td colspan="100%" class="empty-state">
+            <div class="icon icon-table"></div>
+            <h3>No ZIP codes selected</h3>
+            <p>Click on ZIP codes or use drawing tools to select areas.<br>Selected areas will appear as aggregated data here.</p>
+          </td>
+        </tr>
+      `;
+      return;
+    }
+
+    const columns = Object.keys(data[0]);
+
+    // Enhanced header
+    const headerRow = document.createElement('tr');
+    columns.forEach(column => {
+      const th = document.createElement('th');
+      let headerText = humanizeKey(column);
+      
+      if (column !== zipKey) {
+        if (column.toLowerCase().includes('pct') || column.toLowerCase().includes('percent')) {
+          headerText += ' 📊 (Avg)';
+        } else {
+          headerText += ' 📈 (Sum)';
+        }
+      } else {
+        headerText = '📮 ' + headerText;
+      }
+      
+      th.textContent = headerText;
+      headerRow.appendChild(th);
+    });
+    thead.appendChild(headerRow);
+
+    // Enhanced data rows
+    data.forEach((rowData) => {
+      const row = document.createElement('tr');
+      
+      columns.forEach(column => {
+        const cell = document.createElement('td');
+        let value = rowData[column];
+        
+        if (typeof value === 'number') {
+          if (column.toLowerCase().includes('pct') || column.toLowerCase().includes('percent')) {
+            cell.textContent = value.toFixed(1) + '%';
+            cell.style.color = '#059669';
+            cell.style.fontWeight = '600';
+          } else {
+            cell.textContent = Math.round(value).toLocaleString();
+            cell.style.color = '#1f2937';
+            cell.style.fontWeight = '600';
+          }
+        } else {
+          cell.textContent = value;
+          cell.style.fontWeight = '700';
+          cell.style.color = '#4f46e5';
+        }
+        
+        row.appendChild(cell);
+      });
+      
+      tbody.appendChild(row);
+    });
+
+    // Enhanced DataTable
+    try {
+      dataTable = $('#summary').DataTable({ 
+        pageLength: 12,
+        scrollX: true,
+        responsive: true,
+        order: [[0, 'asc']],
+        language: {
+          search: "🔍 Search ZIP codes:",
+          lengthMenu: "Show _MENU_ ZIP codes per page",
+          info: "Showing _START_ to _END_ of _TOTAL_ aggregated ZIP codes",
+          emptyTable: "No aggregated data available",
+          paginate: {
+            first: "⏮️ First",
+            last: "⏭️ Last", 
+            next: "▶️ Next",
+            previous: "◀️ Previous"
+          }
+        },
+        dom: '<"top"lf>rt<"bottom"ip>',
+        columnDefs: [
+          {
+            targets: 0,
+            className: 'text-center font-bold'
+          },
+          {
+            targets: '_all',
+            className: 'text-center'
+          }
+        ]
+      });
+      console.log('✅ DataTable initialized successfully');
+    } catch(e) {
+      console.error('❌ Error initializing DataTable:', e);
+    }
+  }
+
+  /* -----------------------
+     Enhanced Stats Update
+     ----------------------- */
+  function updateStats() {
+    filteredCountEl.textContent = state.filteredFeatures.length.toLocaleString();
+    selectedCountEl.textContent = state.selectedFeatures.size.toLocaleString();
+    
+    const uniqueZips = new Set();
+    Array.from(state.selectedFeatures).forEach(index => {
+      const feature = allFeatures[index];
+      const zipValue = feature.properties[zipKey];
+      if (zipValue) uniqueZips.add(zipValue);
+    });
+    uniqueZipsCountEl.textContent = uniqueZips.size.toLocaleString();
+  }
+
+  /* -----------------------
+     Main Update Function
+     ----------------------- */
+  function updateDisplay() {
+    console.log('=== UPDATE DISPLAY ===');
+    applyFilters();
+    createGeoLayer(state.filteredFeatures);
+    
+    setTimeout(() => {
+      updateAggregation();
+      updateStats();
+    }, 100);
+  }
+
+  /* -----------------------
+     Enhanced Export Functions
+     ----------------------- */
+  exportCSVBtn.addEventListener('click', () => {
+    if (!state.aggregatedData.length) { 
+      showFeedback('❌ No aggregated data to export. Select some features first.', 'warning');
+      return; 
+    }
+
+    const columns = Object.keys(state.aggregatedData[0]);
+    const csvRows = [
+      columns.join(','),
+      ...state.aggregatedData.map(row => 
+        columns.map(col => {
+          const value = row[col];
+          if (value === null || value === undefined) return '';
+          if (typeof value === 'string' && value.includes(',')) {
+            return `"${value.replace(/"/g, '""')}"`;
+          }
+          return value;
+        }).join(',')
+      )
+    ];
+
+    const csvContent = csvRows.join('\n');
+    const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
+    const filename = `education_analytics_${new Date().toISOString().split('T')[0]}.csv`;
+    saveAs(blob, filename);
+    showFeedback(`📥 CSV exported: ${filename}`);
+  });
+
+  downloadGeoBtn.addEventListener('click', () => {
+    const selectedFeaturesList = Array.from(state.selectedFeatures).map(index => allFeatures[index]);
+    
+    if (!selectedFeaturesList.length) { 
+      showFeedback('❌ No features selected for download.', 'warning');
+      return; 
+    }
+
+    const geojsonData = {
+      type: 'FeatureCollection',
+      features: selectedFeaturesList
+    };
+
+    const blob = new Blob([JSON.stringify(geojsonData, null, 2)], { 
+      type: 'application/json' 
+    });
+    const filename = `selected_features_${new Date().toISOString().split('T')[0]}.geojson`;
+    saveAs(blob, filename);
+    showFeedback(`🗺️ GeoJSON downloaded: ${filename}`);
+  });
+
+  /* -----------------------
+     Enhanced Table Row Click to Zoom
+     ----------------------- */
+  document.addEventListener('click', (event) => {
+    const tableRow = event.target.closest('tr');
+    if (!tableRow || !dataTable || tableRow.querySelector('.empty-state')) return;
+
+    try {
+      const rowData = dataTable.row(tableRow).data();
+      if (!rowData) return;
+
+      const zipValue = rowData[0];
+      
+      const matchingFeatures = Array.from(state.selectedFeatures)
+        .map(index => allFeatures[index])
+        .filter(feature => feature.properties[zipKey]?.toString() === zipValue.toString());
+
+      if (matchingFeatures.length > 0) {
+        const tempLayer = L.geoJSON(matchingFeatures);
+        map.fitBounds(tempLayer.getBounds(), { maxZoom: 15 });
+        
+        showFeedback(`🎯 Zoomed to ZIP: ${zipValue}`);
+        
+        // Enhanced flash effect
+        setTimeout(() => {
+          geoLayer.eachLayer(layer => {
+            if (matchingFeatures.some(f => f === layer.feature)) {
+              const original = layer.options;
+              layer.setStyle({ color: '#ef4444', weight: 5, fillOpacity: 0.7 });
+              setTimeout(() => layer.setStyle(styleSelected), 1500);
+            }
+          });
+        }, 500);
+      }
+    } catch(e) {
+      console.warn('Error handling table row click:', e);
+    }
+  });
+
+  /* -----------------------
+     Initialize with Animation
+     ----------------------- */
+  updateDisplay();
+  
+  // Add slide-in animation to sections
+  setTimeout(() => {
+    document.querySelectorAll('.section').forEach((section, index) => {
+      setTimeout(() => {
+        section.style.opacity = '1';
+        section.style.transform = 'translateY(0)';
+      }, index * 100);
+    });
+  }, 100);
+
+  console.log(`🎉 Education Analytics Dashboard loaded successfully!`);
+  console.log(`📊 ${allFeatures.length} features with ${numericFields.length} numeric fields`);
+  showFeedback(`🎉 Dashboard loaded with ${allFeatures.length} features!`);
+
+})();
 </script>
 </body>
 </html>
+
